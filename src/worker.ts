@@ -10,7 +10,7 @@ const id=()=>crypto.randomUUID();
 const enc=new TextEncoder();
 const hex=(b:ArrayBuffer)=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join("");
 async function digest(value:string){return hex(await crypto.subtle.digest("SHA-256",enc.encode(value)));}
-async function passwordHash(password:string,salt:string){const key=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",salt:enc.encode(salt),iterations:120000,hash:"SHA-256"},key,256));}
+async function passwordHash(password:string,salt:string){const key=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",salt:enc.encode(salt),iterations:100000,hash:"SHA-256"},key,256));}
 function cookie(request:Request,name:string){return (request.headers.get("cookie")||"").split(";").map(v=>v.trim()).find(v=>v.startsWith(name+"="))?.slice(name.length+1)||"";}
 async function currentUser(request:Request,env:Env){
  const token=cookie(request,"wl_session");if(!token)return null;
@@ -226,7 +226,7 @@ instagram:{caption,hashtags,callToAction,cardSlides}; threads:{posts}; twitterX:
  return json({error:"Not found",path},404);
 }
 export default {async fetch(request:Request,env:Env):Promise<Response>{
- const url=new URL(request.url);
+ const url=new URL(request.url),path=url.pathname,method=request.method;
  if(url.pathname.startsWith("/api/")){try{return await api(request,env,url);}catch(e){console.error("Wanderlust API error",e);return json({error:e instanceof Error?e.message:"Internal server error"},500);}}
  if(url.pathname!=="/"&&url.pathname.endsWith("/"))return Response.redirect(new URL(url.pathname.replace(/\/+$/,"")+url.search,url),308);
  if(path==="/sitemap.xml"&&method==="GET"){
