@@ -45,3 +45,11 @@ test("Cloudflare build outputs Vite static assets", async () => {
   assert.equal(pkg.scripts.build, "vite build");
   assert.ok((await read("../wrangler.toml")).includes('directory = "./dist"'));
 });
+
+
+test("Cloudflare PBKDF2 uses a supported iteration count and the Worker defines asset routing variables", async () => {
+  const worker = await read("../src/worker.ts");
+  assert.match(worker, /iterations:100000/);
+  assert.doesNotMatch(worker, /iterations:(?:1[0-9]{5,}|[2-9][0-9]{5,})/);
+  assert.match(worker, /const url=new URL\(request.url\),path=url.pathname,method=request.method/);
+});
