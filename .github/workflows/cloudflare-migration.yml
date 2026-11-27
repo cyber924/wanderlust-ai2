@@ -2,10 +2,10 @@ name: Cloudflare migration checks
 on:
   push:
     branches:
-      - cloudflare-migration
+      - main
   pull_request:
     branches:
-      - cloudflare-migration
+      - main
 jobs:
   build-and-check:
     runs-on: ubuntu-latest
