@@ -50,14 +50,18 @@ export const SchedulingView: React.FC<SchedulingViewProps> = ({
 
   useEffect(() => {
     const formatKoreanTime = (date: Date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      const hours = date.getHours();
-      const minutes = String(date.getMinutes()).padStart(2, "0");
-      const ampm = hours >= 12 ? "오후" : "오전";
-      const displayHours = hours % 12 || 12;
-      return `${year}.${month}.${day} · ${ampm} ${displayHours}:${minutes}`;
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+      }).formatToParts(date);
+      const part = (type: string) => parts.find((item) => item.type === type)?.value || "";
+      const ampm = part("dayPeriod").toLowerCase() === "am" ? "오전" : "오후";
+      return `${part("year")}.${part("month")}.${part("day")} · ${ampm} ${part("hour")}:${part("minute")}`;
     };
 
     // Initial update
