@@ -18,7 +18,7 @@ const api=async(path:string,init:RequestInit={})=>{
 let currentUser:CloudUser|null=null;
 const listeners=new Set<(user:CloudUser|null)=>void>();
 const emit=()=>listeners.forEach(fn=>fn(currentUser));
-export const auth={currentUser:null as CloudUser|null,authStateReady:async()=>{await refreshAuth();}};
+export const auth={currentUser:null as CloudUser|null,authStateReady:async()=>{if(currentUser)return currentUser;return await refreshAuth();}};
 export const firebaseConfig={projectId:"wanderlust-ai-cloudflare",firestoreDatabaseId:"D1",authDomain:"Cloudflare Workers"};
 let authRefreshInFlight: Promise<CloudUser|null> | null = null;
 async function refreshAuth(){
@@ -26,7 +26,7 @@ async function refreshAuth(){
  authRefreshInFlight=(async()=>{
   try{
    const data=await api("/api/auth/me");
-   currentUser=data.user?{uid:data.user.id,email:data.user.email,displayName:data.user.displayName,photoURL:null}:null;
+   currentUser=data.user?{uid:data.user.id,email:data.user.email,displayName:data.user.displayName||data.user.display_name||null,photoURL:null}:null;
   }catch(error:any){
    // 429/5xx are transient platform errors, not proof that the session is invalid.
    if(error?.status===401 || (error?.status && error.status<500 && error.status!==429)) currentUser=null;
