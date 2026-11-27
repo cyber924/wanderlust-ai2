@@ -216,11 +216,35 @@ export default function App({ initialData }: { initialData?: InitialPageData } =
   // Visit-triggered deferred publishing: process overdue queue only when Scheduling is opened.
   useEffect(() => {
     let active = true;
+    let nextTaskTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // 예약된 다음 시각에 딱 한 번 실행한다. 주기적 조회/폴링은 하지 않는다.
+    const scheduleNextTask = async () => {
+      if (!active) return;
+      try {
+        const tasks = await fetchScheduledTasksFromFirestore();
+        if (!active) return;
+        const nextTask = tasks
+          .filter((task) => task.status === "pending")
+          .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
+        if (!nextTask) return;
+        const delay = Math.max(0, new Date(nextTask.scheduledAt).getTime() - Date.now());
+        nextTaskTimer = setTimeout(() => {
+          if (active) void scanScheduledTasks();
+        }, Math.min(delay, 2147483647));
+      } catch (error) {
+        console.error("[Autopilot] 다음 예약 시각 확인 실패:", error);
+      }
+    };
+
     async function scanScheduledTasks() {
       try {
         const pendingPassedTasks = await claimDueScheduledTasks();
 
-        if (pendingPassedTasks.length === 0) return;
+        if (pendingPassedTasks.length === 0) {
+          await scheduleNextTask();
+          return;
+        }
 
         console.log(`[Autopilot] Found ${pendingPassedTasks.length} pending tasks to auto-publish!`);
 
@@ -333,7 +357,7 @@ export default function App({ initialData }: { initialData?: InitialPageData } =
           if (hasSucceededAny) {
             // Update client state with all successfully generated posts
             setSavedPosts((prev) => [...newPostsList, ...prev]);
-            setToastMessage(`⏰ [예약발행 성공] 예약 페이지 접속 후 지난 예약 ${newPostsList.length}건을 처리했습니다.`);
+            setToastMessage(`⏰ [예약발행 성공] 예약된 콘텐츠 ${newPostsList.length}건을 발행했습니다.`);
             setTimeout(() => setToastMessage(null), 5000);
 
             // Handle recurrence or set as completed
@@ -377,16 +401,22 @@ export default function App({ initialData }: { initialData?: InitialPageData } =
             await saveScheduledTaskToFirestore(task);
           }
         }
+
+        // 완료 후 다음 예약 1건의 시각에 맞춰 타이머를 다시 설정한다.
+        await scheduleNextTask();
       } catch (err) {
         console.error("[Autopilot] Scan / trigger failed:", err);
+        await scheduleNextTask();
       }
     }
 
     if (isDataLoaded && activeTab === "scheduling" && user) {
-      // Deferred publishing: inspect and claim overdue jobs only when the user opens Scheduling.
-      // No Cron Trigger and no background polling; a D1 conditional update prevents duplicate claims.
-      scanScheduledTasks();
-      return () => { active = false; };
+      // 예약 페이지를 열었을 때 overdue를 먼저 처리하고, 다음 예약 시각에만 한 번 더 실행한다.
+      void scanScheduledTasks();
+      return () => {
+        active = false;
+        if (nextTaskTimer) clearTimeout(nextTaskTimer);
+      };
     }
   }, [isDataLoaded, activeTab, user?.uid]);
 
