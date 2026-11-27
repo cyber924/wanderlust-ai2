@@ -453,7 +453,7 @@ export default function App({ initialData }: { initialData?: InitialPageData } =
 
   // Deep linking: supports both path-based '/blog/[id]' and hash-based '#/blog/[id]' / '#webzine-[id]'
   useEffect(() => {
-    const handleUrlChange = () => {
+    const handleUrlChange = (fromBrowserNavigation = false) => {
       const pathname = window.location.pathname;
       const hash = window.location.hash;
       
@@ -470,7 +470,10 @@ export default function App({ initialData }: { initialData?: InitialPageData } =
         const matched = webzineArticles.find((a) => a.id === targetId);
         if (matched) {
           setSelectedWebzineArticle(matched);
-          setActiveTab("webzine");
+          // Keep another selected tab active when a newly published article refreshes the list.
+          if (fromBrowserNavigation || activeTab === "webzine") {
+            setActiveTab("webzine");
+          }
           return;
         }
       }
@@ -486,14 +489,15 @@ export default function App({ initialData }: { initialData?: InitialPageData } =
       }
     };
 
-    handleUrlChange();
-    window.addEventListener("hashchange", handleUrlChange);
-    window.addEventListener("popstate", handleUrlChange);
+    handleUrlChange(false);
+    const handleBrowserNavigation = () => handleUrlChange(true);
+    window.addEventListener("hashchange", handleBrowserNavigation);
+    window.addEventListener("popstate", handleBrowserNavigation);
     return () => {
-      window.removeEventListener("hashchange", handleUrlChange);
-      window.removeEventListener("popstate", handleUrlChange);
+      window.removeEventListener("hashchange", handleBrowserNavigation);
+      window.removeEventListener("popstate", handleBrowserNavigation);
     };
-  }, [webzineArticles]);
+  }, [webzineArticles, activeTab]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
