@@ -51,13 +51,13 @@ export const SchedulingView: React.FC<SchedulingViewProps> = ({
   useEffect(() => {
     const formatKoreanTime = (date: Date) => {
       const year = date.getFullYear();
-      const month = date.getMonth() + 1;
-      const day = date.getDate();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
       const hours = date.getHours();
-      const minutes = date.getMinutes();
+      const minutes = String(date.getMinutes()).padStart(2, "0");
       const ampm = hours >= 12 ? "오후" : "오전";
       const displayHours = hours % 12 || 12;
-      return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시 ${minutes}분`;
+      return `${year}.${month}.${day} · ${ampm} ${displayHours}:${minutes}`;
     };
 
     // Initial update
@@ -415,7 +415,7 @@ export const SchedulingView: React.FC<SchedulingViewProps> = ({
             </button>
             {/* Live Clock displayed precisely under the synchronization button */}
             {currentLiveTime && (
-              <span className="text-[11px] font-semibold text-orange-400 bg-stone-950/80 border border-stone-800 px-3 py-1.5 rounded-lg flex items-center space-x-1.5 shadow-sm font-mono tabular-nums select-none mt-1">
+              <span className="text-[10px] font-medium text-orange-300/90 bg-stone-950/70 border border-stone-800/80 px-2.5 py-1 rounded-lg flex items-center space-x-1.5 shadow-sm font-mono tabular-nums select-none mt-1">
                 <Clock className="w-3 h-3 text-orange-400" />
                 <span>현재 시각: {currentLiveTime}</span>
               </span>
@@ -701,9 +701,9 @@ export const SchedulingView: React.FC<SchedulingViewProps> = ({
           <div className="p-4 bg-stone-100/60 border border-stone-200 rounded-2xl flex items-start gap-2.5">
             <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <span className="text-xs font-bold text-stone-700">페이지 접속 시 자동 점검 엔진 작동중</span>
+              <span className="text-xs font-bold text-stone-700">예약 페이지가 열려 있는 동안 자동 발행</span>
               <p className="text-[10px] text-stone-500 leading-relaxed font-semibold">
-                Wanderlust AI는 서버 크론 탭 대신 최첨단 <strong>이벤트 클라이언트 리프레시 동기화(Deferred client refresh)</strong>를 사용합니다. 어떠한 유저라도 페이지에 접속하거나 새로고침하는 순간, 예약 예정 시간이 지난 모든 일정들을 데이터베이스 상에서 일괄 자동 감지하여 백그라운드 AI 아티클 작성을 즉각 개시하고 정식 출판물로 자동 전환합니다.
+                페이지에 들어오면 지난 예약을 먼저 확인하고, 다음 예약 시각에 맞춰 브라우저 타이머가 한 번 실행됩니다. 예약 시간이 되면 AI 콘텐츠를 생성해 웹진에 발행하며, 발행 중에도 현재 화면을 유지합니다. 페이지를 닫거나 브라우저가 절전 상태이면 다시 활성화된 뒤 처리됩니다.
               </p>
             </div>
           </div>
