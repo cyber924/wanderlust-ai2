@@ -14,10 +14,13 @@ async function passwordHash(password:string,salt:string){const key=await crypto.
 function cookie(request:Request,name:string){return (request.headers.get("cookie")||"").split(";").map(v=>v.trim()).find(v=>v.startsWith(name+"="))?.slice(name.length+1)||"";}
 async function currentUser(request:Request,env:Env){
  const token=cookie(request,"wl_session");if(!token)return null;
- const row=await env.DB.prepare("SELECT u.id,u.email,u.display_name FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?").bind(await digest(token),now()).first<{id:string,email:string,display_name:string}>();
+ const tokenHash=await digest(token);
+ const row=await env.DB.prepare("SELECT u.id,u.email,u.display_name FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?").bind(tokenHash,now()).first<{id:string,email:string,display_name:string}>();
+ // HS12 pattern: renew the 30-day session when a valid authenticated request arrives.
+ if(row) await env.DB.prepare("UPDATE sessions SET expires_at=? WHERE token_hash=?").bind(new Date(Date.now()+30*86400000).toISOString(),tokenHash).run();
  return row||null;
 }
-const sessionCookie=(token:string,maxAge:number)=>`wl_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+const sessionCookie=(token:string,maxAge:number)=>`wl_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}; Expires=${new Date(Date.now()+maxAge*1000).toUTCString()}`;
 async function gemini(env:Env,prompt:string){
  if(!env.GEMINI_API_KEY)throw new Error("GEMINI_API_KEY secret is not configured");
  const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.GEMINI_MODEL||"gemini-3.8-flash")}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
