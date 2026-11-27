@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "travel_blog_posts": {
+      "title": "Travel Blog Posts",
+      "description": "Generated and saved travel blog posts",
+      "properties": {
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "destination": { "type": "string" },
+        "duration": { "type": "string" },
+        "concept": { "type": "string" },
+        "tone": { "type": "string" },
+        "targetAudience": { "type": "string" },
+        "budget": { "type": "string" },
+        "season": { "type": "string" },
+        "metaKeywords": { "type": "array", "items": { "type": "string" } },
+        "hashtags": { "type": "array", "items": { "type": "string" } },
+        "itinerary": { "type": "array", "items": { "type": "object" } },
+        "markdownContent": { "type": "string" },
+        "travelTips": { "type": "array", "items": { "type": "string" } },
+        "seoDescription": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "views": { "type": "number" },
+        "likes": { "type": "number" },
+        "status": { "type": "string" },
+        "coverImageUrl": { "type": "string" }
+      },
+      "required": ["title", "destination", "markdownContent"]
+    },
+    "travel_gallery_images": {
+      "title": "Travel Gallery Images",
+      "description": "AI-generated travel photo records saved to gallery and linked to blogs",
+      "properties": {
+        "imageUrl": { "type": "string" },
+        "destination": { "type": "string" },
+        "style": { "type": "string" },
+        "lighting": { "type": "string" },
+        "aspectRatio": { "type": "string" },
+        "prompt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "linkedBlogId": { "type": "string" },
+        "linkedBlogTitle": { "type": "string" },
+        "isCover": { "type": "boolean" }
+      },
+      "required": ["imageUrl", "destination"]
+    },
+    "scheduled_queue": {
+      "title": "Scheduled Queue",
+      "description": "Autopilot automated post scheduling queue",
+      "properties": {
+        "categoryType": { "type": "string" },
+        "topicKeywords": { "type": "array", "items": { "type": "string" } },
+        "scheduledAt": { "type": "string" },
+        "recurrence": { "type": "string" },
+        "persona": { "type": "string" },
+        "status": { "type": "string" },
+        "lastExecutedPostId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["categoryType", "scheduledAt", "status"]
+    }
+  }
+}
