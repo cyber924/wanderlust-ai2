@@ -329,6 +329,18 @@ export const SchedulingView: React.FC<SchedulingViewProps> = ({
     }
   };
 
+  // 예약 큐에서 전달된 작업은 사용자가 쓰는 기존 즉시 발행 함수로 처리한다.
+  useEffect(() => {
+    const handleScheduledPublish = (event: Event) => {
+      const task = (event as CustomEvent<ScheduledTask>).detail;
+      if (!task) return;
+      void handleImmediatePublish(task);
+    };
+
+    window.addEventListener("wanderlust:publish-scheduled-task", handleScheduledPublish);
+    return () => window.removeEventListener("wanderlust:publish-scheduled-task", handleScheduledPublish);
+  }, []);
+
   // Text helpers
   const getCategoryEmoji = (cat: string) => {
     switch (cat) {
