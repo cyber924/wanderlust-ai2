@@ -137,56 +137,74 @@ export default function App({ initialData }: { initialData?: InitialPageData } =
     setIsDataLoaded(true);
   }, []);
 
-  // 2. Real-time Subscriptions (onSnapshot): automatic sync and component-unmount cleanup
+  // 2. D1 subscriptions: keep public webzine refresh separate from user archive.
+  // StrictMode and user changes can run effect cleanup before async setup finishes,
+  // so every setup is cancellable and any late subscription is immediately released.
   useEffect(() => {
+    let active = true;
     let unsubscribeBlogs: (() => void) | null = null;
-    let unsubscribePublished: (() => void) | null = null;
 
-    async function initRealtimeSubscriptions() {
-      setDbStatus("connecting");
+    async function initArchiveSubscription() {
+      if (!user?.uid) {
+        setSavedPosts([]);
+        return;
+      }
       try {
         await auth.authStateReady();
-
-        // Subscribe to blogs archive
+        if (!active) return;
         unsubscribeBlogs = subscribeToBlogs(
           (posts) => {
-            console.log(`[Subscription] Received ${posts.length} blogs from server`);
-            setSavedPosts(posts); // This updates savedPosts. If 0 items, refreshes with empty list!
+            if (!active) return;
+            setSavedPosts(posts);
             setDbStatus("success");
             setDbErrorMessage(null);
           },
           (err) => {
-            console.error("[Subscription] Blogs failed:", err);
+            if (!active) return;
+            console.error("[D1] Archive load failed:", err);
             setDbStatus("error");
             setDbErrorMessage(err.message || String(err));
           }
         );
-
-        // Subscribe to travel_blog_posts webzine public published copy
-        unsubscribePublished = subscribeToPublishedPosts(
-          (posts) => {
-            console.log(`[Subscription] Received ${posts.length} published posts from server`);
-            setPublishedPosts(posts); // Overwrites purely from server
-          },
-          (err) => {
-            console.error("[Subscription] Published posts failed:", err);
-          }
-        );
-
+        if (!active && unsubscribeBlogs) unsubscribeBlogs();
       } catch (err: any) {
-        console.error("Failed to initialize subscriptions:", err);
+        if (!active) return;
+        console.error("Failed to initialize archive subscription:", err);
         setDbStatus("error");
         setDbErrorMessage(err.message || String(err));
       }
     }
 
-    initRealtimeSubscriptions();
-
+    void initArchiveSubscription();
     return () => {
-      if (unsubscribeBlogs) unsubscribeBlogs();
-      if (unsubscribePublished) unsubscribePublished();
+      active = false;
+      unsubscribeBlogs?.();
     };
-  }, [user]);
+  }, [user?.uid]);
+
+  // Published webzine content is public: load once and refresh only when the
+  // visitor returns to the tab. It must not be recreated on login/logout.
+  useEffect(() => {
+    let active = true;
+    const loadPublished = () => {
+      fetchPublishedPostsFromServer()
+        .then((posts) => { if (active) setPublishedPosts(posts); })
+        .catch((err) => {
+          if (active) console.error("[D1] Published webzine load failed:", err);
+        });
+    };
+    loadPublished();
+    const refreshOnReturn = () => {
+      if (document.visibilityState === "visible") loadPublished();
+    };
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+    };
+  }, []);
 
   // 3. Manual trigger: Force pull directly from server bypassing local cache (getDocsFromServer)
   const handleRefreshDB = async () => {
