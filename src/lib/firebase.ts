@@ -1,19 +1,46 @@
 import { BlogPost, GeneratedImage, UserProfile, ScheduledTask } from "../types";
 
 type CloudUser = {uid:string;email:string|null;displayName:string|null;photoURL:string|null;};
+const inFlightGets = new Map<string, Promise<any>>();
 const api=async(path:string,init:RequestInit={})=>{
- const response=await fetch(path,{...init,credentials:"include",headers:{"content-type":"application/json",...(init.headers||{})},cache:"no-store"});
- const data:any=await response.json().catch(()=>({}));
- if(!response.ok)throw Object.assign(new Error(data.error||"요청 처리에 실패했습니다."),{status:response.status,code:data.code});
- return data;
+ const method=(init.method||"GET").toUpperCase();
+ const requestKey=method==="GET"?path:"";
+ if(requestKey && inFlightGets.has(requestKey)) return inFlightGets.get(requestKey)!;
+ const request=(async()=>{
+  const response=await fetch(path,{...init,credentials:"include",headers:{"content-type":"application/json",...(init.headers||{})},cache:"no-store"});
+  const data:any=await response.json().catch(()=>({}));
+  if(!response.ok)throw Object.assign(new Error(data.error||"요청 처리에 실패했습니다."),{status:response.status,code:data.code});
+  return data;
+ })();
+ if(requestKey) inFlightGets.set(requestKey,request);
+ try{return await request;}finally{if(requestKey)inFlightGets.delete(requestKey);}
 };
 let currentUser:CloudUser|null=null;
 const listeners=new Set<(user:CloudUser|null)=>void>();
 const emit=()=>listeners.forEach(fn=>fn(currentUser));
 export const auth={currentUser:null as CloudUser|null,authStateReady:async()=>{await refreshAuth();}};
 export const firebaseConfig={projectId:"wanderlust-ai-cloudflare",firestoreDatabaseId:"D1",authDomain:"Cloudflare Workers"};
-async function refreshAuth(){try{const data=await api("/api/auth/me");currentUser=data.user?{uid:data.user.id,email:data.user.email,displayName:data.user.displayName,photoURL:null}:null;}catch{currentUser=null;}auth.currentUser=currentUser;emit();return currentUser;}
-export function onAuthStateChanged(_auth:any,callback:(user:CloudUser|null)=>void){listeners.add(callback);refreshAuth().then(()=>callback(currentUser));return()=>listeners.delete(callback);}
+let authRefreshInFlight: Promise<CloudUser|null> | null = null;
+async function refreshAuth(){
+ if(authRefreshInFlight) return authRefreshInFlight;
+ authRefreshInFlight=(async()=>{
+  try{
+   const data=await api("/api/auth/me");
+   currentUser=data.user?{uid:data.user.id,email:data.user.email,displayName:data.user.displayName,photoURL:null}:null;
+  }catch(error:any){
+   // 429/5xx are transient platform errors, not proof that the session is invalid.
+   if(error?.status===401 || (error?.status && error.status<500 && error.status!==429)) currentUser=null;
+   console.warn("Auth refresh temporarily unavailable; retaining current session state.",error);
+  }
+  auth.currentUser=currentUser;emit();return currentUser;
+ })();
+ try{return await authRefreshInFlight;}finally{authRefreshInFlight=null;}
+}
+export function onAuthStateChanged(_auth:any,callback:(user:CloudUser|null)=>void){
+ listeners.add(callback);
+ void refreshAuth();
+ return()=>listeners.delete(callback);
+}
 export async function ensureAuth(){return currentUser||await refreshAuth();}
 export async function loginWithEmail(email:string,pass:string){const d=await api("/api/auth/login",{method:"POST",body:JSON.stringify({email,password:pass})});currentUser={uid:d.user.id,email:d.user.email,displayName:d.user.displayName,photoURL:null};auth.currentUser=currentUser;emit();return currentUser;}
 export async function signUpWithEmail(email:string,pass:string,displayName="여행 작가"){const d=await api("/api/auth/register",{method:"POST",body:JSON.stringify({email,password:pass,displayName})});currentUser={uid:d.user.id,email:d.user.email,displayName:d.user.displayName,photoURL:null};auth.currentUser=currentUser;emit();return currentUser;}
@@ -34,8 +61,26 @@ export async function fetchPublishedPostsFromServer(){const d=await api("/api/po
 export async function deletePostFromFirestore(id:string){await api("/api/posts?id="+encodeURIComponent(id),{method:"DELETE"});deleteLocalPost(id);}
 export async function publishPostAtomic(post:BlogPost){await api("/api/posts",{method:"POST",body:JSON.stringify({post:{...post,status:"published",isPublic:true}})});}
 export async function unpublishPostAtomic(id:string){const post=getLocalPosts().find(p=>p.id===id);if(post)await api("/api/posts",{method:"POST",body:JSON.stringify({post:{...post,status:"draft",isPublic:false}})});}
-export function subscribeToBlogs(onNext:(posts:BlogPost[])=>void,onError:(err:any)=>void){let active=true;if(!currentUser){onNext([]);return()=>{active=false;};}const load=()=>fetchPostsFromFirestore().then(v=>{if(active)onNext(v)}).catch(e=>{if(active)onError(e)});load();const timer=setInterval(load,60000);return()=>{active=false;clearInterval(timer)};}
-export function subscribeToPublishedPosts(onNext:(posts:BlogPost[])=>void,onError:(err:any)=>void){let active=true;const load=()=>fetchPublishedPostsFromServer().then(v=>{if(active)onNext(v)}).catch(e=>{if(active)onError(e)});load();const timer=setInterval(load,60000);return()=>{active=false;clearInterval(timer)};}
+function subscribeOnPageReturn(load:()=>void){
+ const refresh=()=>{if(typeof document==="undefined"||document.visibilityState==="visible")load();};
+ window.addEventListener("focus",refresh);
+ document.addEventListener("visibilitychange",refresh);
+ return()=>{window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
+}
+export function subscribeToBlogs(onNext:(posts:BlogPost[])=>void,onError:(err:any)=>void){
+ let active=true;
+ const load=()=>{if(!currentUser)return;fetchPostsFromFirestore().then(v=>{if(active)onNext(v)}).catch(e=>{if(active)onError(e)});};
+ if(currentUser)load();else onNext([]);
+ const cleanup=subscribeOnPageReturn(load);
+ return()=>{active=false;cleanup();};
+}
+export function subscribeToPublishedPosts(onNext:(posts:BlogPost[])=>void,onError:(err:any)=>void){
+ let active=true;
+ const load=()=>fetchPublishedPostsFromServer().then(v=>{if(active)onNext(v)}).catch(e=>{if(active)onError(e)}).catch(()=>{});
+ load();
+ const cleanup=subscribeOnPageReturn(load);
+ return()=>{active=false;cleanup();};
+}
 export async function checkFirestoreConnection(){try{await api("/api/health");return true}catch{return false;}}
 export async function saveImageToFirestore(img:GeneratedImage){const d=await api("/api/images",{method:"POST",body:JSON.stringify({image:img})});saveLocalImage({...img,id:d.id});return d.id;}
 export async function saveMultipleImagesToFirestore(images:GeneratedImage[]){for(const img of images)await saveImageToFirestore(img);}
